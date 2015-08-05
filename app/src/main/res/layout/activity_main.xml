@@ -12,7 +12,7 @@
 
         <Button
             android:id="@+id/btnLeft"
-            android:layout_width="wrap_content"
+            android:layout_width="50px"
             android:layout_height="match_parent"
             android:background="@android:color/white"
             android:minWidth="0dip"
@@ -27,7 +27,7 @@
 
         <Button
             android:id="@+id/btnRight"
-            android:layout_width="wrap_content"
+            android:layout_width="50px"
             android:layout_height="match_parent"
             android:background="@android:color/white"
             android:minWidth="0dip"

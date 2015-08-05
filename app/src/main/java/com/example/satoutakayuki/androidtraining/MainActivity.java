@@ -2,6 +2,7 @@ package com.example.satoutakayuki.androidtraining;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.support.v4.view.ViewPager;
 import android.util.Log;
@@ -9,14 +10,22 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.InputStream;
+import java.lang.ref.WeakReference;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity {
 
-	//    LoopViewPager mPager;
 	ViewPager mPager;
 
 	@Override
@@ -39,17 +48,31 @@ public class MainActivity extends Activity {
 		imageUrls.add("http://imgbp.hotp.jp/CSP/IMG_SRC/69/30/B007846930/B007846930_349-262.jpg");
 		imageUrls.add("http://imgbp.hotp.jp/CSP/IMG_SRC/49/17/B007734917/B007734917_349-262.jpg");
 
-		mPager = (ViewPager) findViewById(R.id.pager);
-		final MainPhotoViewPager adapter = new MainPhotoViewPager(imageUrls);
-//		WindowManager wm = (WindowManager) getSystemService("window");
-//		int pageWidth = wm.getDefaultDisplay().getWidth() / 3;
-//		mPager.getLayoutParams().width = pageWidth;
+		// 画面幅を取得
+		WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+		final int dispWidth = wm.getDefaultDisplay().getWidth();
+		final int lbtnWidth = 50;
+		final int rbtnWidth = 50;
 
+		final int DISP_PAGE_COUNT = 3; //TODO: 一度に見えるページ数が偶数だとうまく動かない
+
+		final int pageMargin = (dispWidth - lbtnWidth - rbtnWidth) / DISP_PAGE_COUNT;
+
+		Log.d("Log", "------------------------------");
+		Log.d("Log", "dispWidth = " + dispWidth);
+		Log.d("Log", "lbtnWidth = " + lbtnWidth);
+		Log.d("Log", "rbtnWidth = " + rbtnWidth);
+		Log.d("Log", "pageMargin = " + pageMargin);
+		Log.d("Log", "------------------------------");
+
+
+		final MainPhotoAdapter adapter = new MainPhotoAdapter(imageUrls, pageMargin, DISP_PAGE_COUNT, this);
+		mPager = (ViewPager) findViewById(R.id.pager);
 		mPager.setAdapter(adapter);
-		if (imageUrls.size() > 3) {
-			mPager.setCurrentItem(3, false);
-//			WindowManager wm = (WindowManager) getSystemService("window");
-//			mPager.setPageMargin(-1 * wm.getDefaultDisplay().getWidth() / 3);
+		mPager.setPageMargin(- pageMargin * (DISP_PAGE_COUNT - 1));
+		if (imageUrls.size() > DISP_PAGE_COUNT) {
+			mPager.setOffscreenPageLimit(imageUrls.size() + DISP_PAGE_COUNT * 2);
+			mPager.setCurrentItem(DISP_PAGE_COUNT + (DISP_PAGE_COUNT / 2), false);
 			mPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
 				@Override
 				public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
@@ -59,11 +82,25 @@ public class MainActivity extends Activity {
 					Log.d("Log", "positionOffset = " + positionOffset);
 					Log.d("Log", "positionOffsetPixels = " + positionOffsetPixels);
 					Log.d("Log", "------------------------------");
+					int realPosition = position;
 					if (positionOffsetPixels == 0) {
-						if (position == 0) {
-							mPager.setCurrentItem(mPager.getAdapter().getCount() - 3 * 2, false);
-						} else if (position == mPager.getAdapter().getCount() - 1) {
-							mPager.setCurrentItem(3 * 2 - 1, false);
+						if (position == (DISP_PAGE_COUNT / 2)) {
+							realPosition = mPager.getAdapter().getCount() - DISP_PAGE_COUNT * 2 + (DISP_PAGE_COUNT / 2);
+							mPager.setCurrentItem(realPosition, false);
+						}
+					}
+					if (positionOffsetPixels >= pageMargin - 1) {
+						if (position == mPager.getAdapter().getCount() - DISP_PAGE_COUNT + (DISP_PAGE_COUNT / 2) - 1) {
+							realPosition = DISP_PAGE_COUNT + (DISP_PAGE_COUNT / 2);
+							mPager.setCurrentItem(realPosition, false);
+						}
+					}
+					if (positionOffsetPixels == 0 || positionOffsetPixels >= pageMargin - 1) {
+						final TextView tv = (TextView) mPager.findViewWithTag(realPosition).findViewWithTag("TextView");
+						if (position == mPager.getCurrentItem()) {
+							tv.setTextColor(Color.parseColor("#FF0000"));
+						} else {
+							tv.setTextColor(Color.parseColor("#000000"));
 						}
 					}
 				}
@@ -74,6 +111,8 @@ public class MainActivity extends Activity {
 					Log.d("Log", "onPageSelected");
 					Log.d("Log", "position = " + position);
 					Log.d("Log", "------------------------------");
+//					final TextView tv = (TextView) mPager.findViewWithTag(position).findViewWithTag("TextView");
+//					tv.setBackgroundColor(Color.parseColor("#000000"));
 				}
 
 				@Override
@@ -84,6 +123,8 @@ public class MainActivity extends Activity {
 					Log.d("Log", "------------------------------");
 				}
 			});
+		} else {
+			mPager.setOffscreenPageLimit(DISP_PAGE_COUNT);
 		}
 
 		findViewById(R.id.btnLeft).setOnClickListener(new View.OnClickListener() {
@@ -101,76 +142,126 @@ public class MainActivity extends Activity {
 		});
 	}
 
-	class MainPhotoViewPager extends android.support.v4.view.PagerAdapter {
+	@Override
+	protected void onDestroy() {
+		((MainPhotoAdapter) mPager.getAdapter()).stopImageHandler();
+		super.onDestroy();
+	}
 
-		// 同時に表示するページ数鵜
-		private static final int DISP_PAGE_COUNT = 3;
-		private int mVirtualCount = 0;
-		private int mRealCount = 0;
-		private List<String> mImageUrls;
+	class MainPhotoAdapter extends android.support.v4.view.PagerAdapter {
+		private WeakReference<Activity> mActivityHolder = null;
 
-		public MainPhotoViewPager(List<String> imageUrls) {
+		private final int mPageMargin;
+		private final int mDispPageCount;
+		private final int mVirtualCount;
+		private final int mRealCount;
+		private final List<String> mImageUrlList;
+		/** WEB画像（Drawable）を保持するマップ */
+		private final HashMap<Integer, Drawable> mDrawerbleMap;
+
+		/** 画像取得用のExecutorService */
+		private ExecutorService mImageGetExecutor;
+
+		/**
+		 * コンストラクタ
+		 *
+		 * @param imageUrlList
+		 * @param pageMargin
+		 * @param dispPageCount
+		 * @param activity
+		 */
+		public MainPhotoAdapter(final List<String> imageUrlList, final int pageMargin, final int dispPageCount, final Activity activity) {
 			super();
-			if (imageUrls == null) {
+			if (imageUrlList == null || activity == null) {
 				// コンストラクタの引数はすべて必須のため１つでもnullの引数があった場合は例外を発行
 				throw new IllegalArgumentException("MainPhotoViewPager null in the argument");
 			}
-			mImageUrls = imageUrls;
-			mRealCount = mImageUrls.size();
-			if (mRealCount > DISP_PAGE_COUNT) {
+			mImageUrlList = imageUrlList;
+			mPageMargin = pageMargin;
+			mDispPageCount = dispPageCount;
+			mRealCount = mImageUrlList.size();
+			if (mRealCount > mDispPageCount) {
 				// 表示ページ数より多い場合
-				mVirtualCount = mRealCount + DISP_PAGE_COUNT * 2;
+				mVirtualCount = mRealCount + mDispPageCount * 2;
 			} else {
 				// 表示ページ数以下の場合
 				mVirtualCount = mRealCount;
 			}
+			mDrawerbleMap = new HashMap<Integer, Drawable>();
+			mImageGetExecutor = Executors.newFixedThreadPool(mRealCount);
+			mActivityHolder = new WeakReference<Activity>(activity);
 		}
 
 		@Override
 		public Object instantiateItem(ViewGroup container, int position) {
-			TextView tv = new TextView(container.getContext());
-			WindowManager wm = (WindowManager) getSystemService("window");
-			tv.setWidth(wm.getDefaultDisplay().getWidth() / 3);
-//			tv.setLayoutDirection((int) wm.getDefaultDisplay().getWidth() / 3);
-			tv.setPadding(
-					-wm.getDefaultDisplay().getWidth() / 3,
-					0,
-					-wm.getDefaultDisplay().getWidth() / 3,
-					0);
-			tv.setGravity(Gravity.CENTER);
-			int virtualPosition;
-			if (mVirtualCount == mRealCount) {
-				// ページングなし
-				virtualPosition = position;
-				tv.setBackgroundColor(Color.parseColor("#FFFFFF"));
-			} else {
-				virtualPosition = (position - DISP_PAGE_COUNT + mRealCount) % mRealCount;
-				if (0 <= position && position <= DISP_PAGE_COUNT - 1) {
-					// 左側の仮ページ
-					tv.setBackgroundColor(Color.parseColor("#FF0000"));
-				} else if (mVirtualCount - DISP_PAGE_COUNT <= position && position <= mVirtualCount - 1) {
-					// 左側の仮ページ
-					tv.setBackgroundColor(Color.parseColor("#FFFF00"));
+			LinearLayout rootView;
+			rootView = (LinearLayout) container.findViewWithTag(position);
+			if (rootView == null) {
+				rootView = new LinearLayout(container.getContext());
+				rootView.setTag(position);
+				rootView.setPadding(
+						mPageMargin + 5,
+						0,
+						mPageMargin + 5,
+						0);
+				rootView.setOrientation(LinearLayout.VERTICAL);
+
+				final TextView tv = new TextView(rootView.getContext());
+				tv.setTag("TextView");
+				tv.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+				tv.setGravity(Gravity.CENTER);
+				final int virtualPosition;
+				if (mVirtualCount == mRealCount) {
+					// ページングなし
+					virtualPosition = position;
+					tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
 				} else {
-					// 中央の実ページ
-					tv.setBackgroundColor(Color.parseColor("#FFFFFF"));
+					virtualPosition = (position - mDispPageCount + mRealCount) % mRealCount;
+					if (0 <= position && position <= mDispPageCount - (mDispPageCount / 2)) {
+						// 左側の仮ページ
+						tv.setBackgroundColor(Color.parseColor("#66FF0000"));
+					} else if (mVirtualCount - mDispPageCount + (mDispPageCount / 2) - 1 <= position && position <= mVirtualCount - (mDispPageCount / 2)) {
+						// 右側の仮ページ
+						tv.setBackgroundColor(Color.parseColor("#66FFFF00"));
+					} else {
+						// 中央の実ページ
+						tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
+					}
 				}
+				tv.setTextSize(30);
+				tv.setText(virtualPosition + "");
+
+				final ImageView iv = new ImageView(rootView.getContext());
+//				iv.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+
+				mImageGetExecutor.execute(new ImageHandler(virtualPosition, iv));
+
+				rootView.addView(tv);
+				rootView.addView(iv);
+
+				container.addView(rootView);
+				Log.d("Log", "==============================");
+				Log.d("Log", "instantiateItem(" + position + ")");
+				Log.d("Log", "mDispPageCount = " + mDispPageCount);
+				Log.d("Log", "mVirtualCount = " + mVirtualCount);
+				Log.d("Log", "mRealCount = " + mRealCount);
+				Log.d("Log", "position = " + position);
+				Log.d("Log", "virtualPosition = " + virtualPosition);
+				Log.d("Log", "==============================");
+			} else {
+				Log.d("Log", "==============================");
+				Log.d("Log", "instantiateItem(" + position + ")");
+				Log.d("Log", "==============================");
 			}
-			tv.setTextSize(100);
-			tv.setText(virtualPosition + "");
-			container.addView(tv);
-			Log.d("Log", "------------------------------");
-			Log.d("Log", "DISP_PAGE_COUNT = " + DISP_PAGE_COUNT);
-			Log.d("Log", "mVirtualCount = " + mVirtualCount);
-			Log.d("Log", "mRealCount = " + mRealCount);
-			Log.d("Log", "position = " + position);
-			Log.d("Log", "virtualPosition = " + virtualPosition);
-			Log.d("Log", "------------------------------");
-			return tv;
+
+			return rootView;
 		}
 
 		@Override
 		public void destroyItem(ViewGroup container, int position, Object object) {
+			Log.d("Log", "==============================");
+			Log.d("Log", "destroyItem(" + position + ")");
+			Log.d("Log", "==============================");
 			View v = (View) object;
 			container.removeView(v);
 		}
@@ -183,6 +274,71 @@ public class MainActivity extends Activity {
 		@Override
 		public boolean isViewFromObject(View view, Object object) {
 			return view == object; // false
+		}
+
+		public void stopImageHandler() {
+			mImageGetExecutor.shutdown();
+			try {
+				// 既存タスクの終了を待つ
+				if (!mImageGetExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+					// 現在実行中のタスクをキャンセル
+					mImageGetExecutor.shutdownNow();
+					// キャンセル処理に反応するために待つ
+					if (!mImageGetExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+						Log.w("Log", "shutdownAndAwaitTermination Pool did not terminate");
+					}
+				}
+			} catch (final InterruptedException ie) {
+				// 現在のスレッドを遮るならタスクをキャンセル
+				mImageGetExecutor.shutdownNow();
+				// 現在のスレッドの割り込みを維持
+				Thread.currentThread().interrupt();
+			}
+			mImageGetExecutor = null;
+		}
+
+		/**
+		 * 画像取得ハンドラ
+		 */
+		private class ImageHandler implements Runnable {
+			/** サロンヘッダーを表示するImageView */
+			private WeakReference<ImageView> mImageViewHolder = null;
+
+			private final int mImageIndex;
+
+			/**
+			 * コンストラクタ
+			 * @param index 画像のインデックス
+			 */
+			public ImageHandler(final int index, final ImageView imageView) {
+				mImageIndex = index;
+				mImageViewHolder = new WeakReference<ImageView>(imageView);
+			}
+
+			public void run() {
+				try {
+					// WEBから画像を取得
+					if (!mDrawerbleMap.containsKey(mImageIndex)) {
+						// 未取得の画像だった場合取得を実行する
+						final InputStream is = new URL(mImageUrlList.get(mImageIndex)).openStream();
+						mDrawerbleMap.put(mImageIndex, Drawable.createFromStream(is, ""));
+						is.close();
+					}
+
+					if (!mActivityHolder.get().isFinishing()) {
+						// 画像が未設定の場合、最初に取得できた画像を設定
+//						mIndex = mImageIndex;
+						mActivityHolder.get().runOnUiThread(new Runnable() {
+							@Override
+							public void run() {
+								mImageViewHolder.get().setImageDrawable(mDrawerbleMap.get(mImageIndex));
+							}
+						});
+					}
+				} catch (final Exception ignored) {
+					Log.w(ignored.getClass().getCanonicalName(), ignored.getMessage(), ignored);
+				}
+			}
 		}
 
 	}
