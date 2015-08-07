@@ -1,15 +1,25 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:custom="http://schemas.android.com/apk/res-auto"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:padding="10dip"
     android:orientation="vertical" >
 
-    <com.example.satoutakayuki.androidtraining.MainPhotoViewPager
+    <com.example.satoutakayuki.androidtraining.MainPhotoView
         android:id="@+id/pager"
         android:layout_width="match_parent"
-        android:layout_height="0dip"
-        android:layout_weight="1" />
+        android:layout_height="wrap_content"
+        app:thumbnail_auto_paging_on="true"
+        app:thumbnail_auto_paging_duration="5000"
+        app:thumbnail_auto_paging_scroll_speed="200"
+        app:thumbnail_focused_color="#66ff0000"
+        app:thumbnail_unfocused_color="#00000000"/>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="0dip"
+        android:layout_weight="1"
+        android:text="Dummy"/>
 </LinearLayout>
