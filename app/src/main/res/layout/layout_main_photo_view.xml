@@ -1,11 +1,10 @@
+<!-- MainPhotoView用のレイアウト -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingTop="10dip"
-    android:paddingBottom="10dip">
+    android:background="@android:color/transparent">
 
     <ImageView
         android:id="@+id/main_photo_image_view"
@@ -23,7 +22,7 @@
         <Button
             android:id="@+id/button_preview"
             android:layout_width="50px"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:background="@android:color/white"
             android:minWidth="0dip"
             android:padding="5dip"
@@ -32,14 +31,14 @@
         <view class="com.example.satoutakayuki.androidtraining.MainPhotoView$ThumbnailViewPager"
             android:id="@+id/thumbnail_view_pager"
             android:layout_width="0dip"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             />
 
         <Button
             android:id="@+id/button_next"
             android:layout_width="50px"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:background="@android:color/white"
             android:minWidth="0dip"
             android:padding="5dip"

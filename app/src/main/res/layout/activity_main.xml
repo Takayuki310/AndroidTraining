@@ -1,25 +1,30 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="10dip"
-    android:orientation="vertical" >
+    android:orientation="vertical"
+    android:background="#6666FF">
 
     <com.example.satoutakayuki.androidtraining.MainPhotoView
-        android:id="@+id/pager"
+        android:id="@+id/main_photo_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_margin="10dip"
+        app:main_photo_aspect_ratio_w="349"
+        app:main_photo_aspect_ratio_h="262"
+        app:thumbnail_disp_count="3"
         app:thumbnail_auto_paging_on="true"
-        app:thumbnail_auto_paging_duration="5000"
+        app:thumbnail_auto_paging_duration="2500"
         app:thumbnail_auto_paging_scroll_speed="200"
-        app:thumbnail_focused_color="#66ff0000"
-        app:thumbnail_unfocused_color="#00000000"/>
+        app:thumbnail_focused_color="#99000000"
+        app:thumbnail_unfocused_color="#00000000"
+        app:thumbnail_margin="10dip"/>
 
     <TextView
+        android:id="@+id/info_text"
         android:layout_width="match_parent"
         android:layout_height="0dip"
         android:layout_weight="1"
-        android:text="Dummy"/>
+        android:textSize="14sp" />
 </LinearLayout>

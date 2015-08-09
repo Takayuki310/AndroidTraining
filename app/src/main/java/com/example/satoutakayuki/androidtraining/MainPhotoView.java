@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.TransitionDrawable;
 import android.os.Handler;
 import android.os.Message;
+import android.os.Parcelable;
 import android.support.v4.view.PagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.util.AttributeSet;
@@ -47,12 +48,16 @@ public class MainPhotoView extends LinearLayout {
 	// ----------------------------------------
 	/** メインフォト切り替え時のクロスフェードアニメーション時間（ミリ秒） */
 	private static final int CROSS_FADE_ANIMATION_DURATION_MILLIS = 300;
-	/** 一度に見えるサムネイル数 */
-	private static final int DISP_THUMBNAIL_COUNT = 3; //TODO:偶数だとうまく動かない・・・とりあえず３で最適化
 
 	// ----------------------------------------
 	// MainPhotoView独自属性用の変数
 	// ----------------------------------------
+	/** メインフォトのアスペクト比（w） */
+	private int mMainPhotoAspectRatioW = 4;
+	/** メインフォトのアスペクト比（h） */
+	private int mMainPhotoAspectRatioH = 3;
+	/** 一度に見えるサムネイル数 */
+	private int mThumbnailDispCount = 3;
 	/** サムネイルの自動ページ送りのON/OFF */
 	private boolean mThumbnailAutoPagingOn = true;
 	/** サムネイルの自動ページ送りの周期(ミリ秒) */
@@ -63,6 +68,14 @@ public class MainPhotoView extends LinearLayout {
 	private int mThumbnailFocusedColor = Color.parseColor("#66000000");
 	/** サムネイルの非フォーカス色 */
 	private int mThumbnailUnFocusedColor = Color.parseColor("#00000000");
+	/** サムネイル間のマージン(px) */
+	private int mThumbnailMargin = 0;
+
+	// ----------------------------------------
+	// 変数
+	// ----------------------------------------
+	/** メインフォトのURLリスト */
+	private List<String> mMainPhotoUrlList = new ArrayList<String>();
 
 	// ----------------------------------------
 	// Views
@@ -71,14 +84,6 @@ public class MainPhotoView extends LinearLayout {
 	private ImageView mMainPhotoImageView;
 	/** サムネイル表示用ViewPager */
 	private ThumbnailViewPager mThumbnailViewPager;
-
-	// ----------------------------------------
-	// Field
-	// ----------------------------------------
-	private int lbtnWidth = 50;
-	private int rbtnWidth = 50;
-	private int mPageMargin = 0;
-	private List<String> mMainPhotoUrlList = new ArrayList<String>();
 
 	/**
 	 * コンストラクタ
@@ -106,28 +111,29 @@ public class MainPhotoView extends LinearLayout {
 	 */
 	private void initLayout(final Context context, final AttributeSet attrs) {
 		if (attrs != null) {
+			// 独自属性の設定
 			final TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.MainPhotoView);
-
+			mMainPhotoAspectRatioW = ta.getInteger(R.styleable.MainPhotoView_main_photo_aspect_ratio_w, mMainPhotoAspectRatioW);
+			mMainPhotoAspectRatioH = ta.getInteger(R.styleable.MainPhotoView_main_photo_aspect_ratio_h, mMainPhotoAspectRatioH);
+			mThumbnailDispCount = ta.getInteger(R.styleable.MainPhotoView_thumbnail_disp_count, mThumbnailDispCount);
 			mThumbnailAutoPagingOn = ta.getBoolean(R.styleable.MainPhotoView_thumbnail_auto_paging_on, mThumbnailAutoPagingOn);
 			mThumbnailAutoPagingDuration = (long) ta.getInteger(R.styleable.MainPhotoView_thumbnail_auto_paging_duration, Integer.valueOf(Long.toString(mThumbnailAutoPagingDuration)));
 			mThumbnailAutoPagingScrollSpeed = ta.getInteger(R.styleable.MainPhotoView_thumbnail_auto_paging_scroll_speed, mThumbnailAutoPagingScrollSpeed);
 			mThumbnailFocusedColor = ta.getColor(R.styleable.MainPhotoView_thumbnail_focused_color, mThumbnailFocusedColor);
 			mThumbnailUnFocusedColor = ta.getColor(R.styleable.MainPhotoView_thumbnail_unfocused_color, mThumbnailUnFocusedColor);
+			mThumbnailMargin = ta.getDimensionPixelSize(R.styleable.MainPhotoView_thumbnail_margin, mThumbnailMargin) / 2;
 		}
 
-		// レイアウト定義をインフレート
+		// レイアウトをインフレート
 		final View rootLayout = LayoutInflater.from(context).inflate(R.layout.layout_main_photo_view, this);
 		rootLayout.setVisibility(View.GONE);
-
-//		WindowManager wm = (WindowManager) getContext().getSystemService(Activity.WINDOW_SERVICE);
-//		final int dispWidth = wm.getDefaultDisplay().getWidth();
 
 		// メインフォト表示用ImageViewのインスタンスを取得
 		mMainPhotoImageView = (ImageView) this.findViewById(R.id.main_photo_image_view);
 		// サムネイル表示用ViewPagerのインスタンスを取得
 		mThumbnailViewPager = (ThumbnailViewPager) this.findViewById(R.id.thumbnail_view_pager);
-//		mThumbnailViewPager.setAdapter(null);
-		// カスタムViewの幅が確定してから子Viewの初期化をする
+
+		// カスタムViewの幅が確定してから子Viewの高さを初期化
 		getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
 			/** 初期化済みフラグ */
 			private boolean isInitalized = false;
@@ -135,38 +141,29 @@ public class MainPhotoView extends LinearLayout {
 			@Override
 			public void onGlobalLayout() {
 				final int mainPhotoWidth = mMainPhotoImageView.getWidth();
-//				final int thumbnailWidth = mThumbnailViewPager.getWidth();
-				if (!isInitalized && mainPhotoWidth != 0/*&& thumbnailWidth != 0 */) {
-					// サムネイル表示用ViewPagerのマージンを計算
-					mPageMargin = (mainPhotoWidth - lbtnWidth - rbtnWidth) / DISP_THUMBNAIL_COUNT;
-//					mPageMargin = thumbnailWidth / DISP_THUMBNAIL_COUNT;
+				final int thumbnailWidth = mThumbnailViewPager.getWidth();
+
+				if (!isInitalized && mainPhotoWidth != 0 && thumbnailWidth != 0) {
 
 					// メインフォト表示用ImageViewの初期化
 					mMainPhotoImageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
 					mMainPhotoImageView.getLayoutParams().width = mainPhotoWidth;
-					mMainPhotoImageView.getLayoutParams().height = mainPhotoWidth * 3 / 4;
+					mMainPhotoImageView.getLayoutParams().height = mainPhotoWidth * mMainPhotoAspectRatioH / mMainPhotoAspectRatioW;
 
 					// サムネイル表示用ViewPagerの初期化
+					final int h = ((thumbnailWidth / mThumbnailDispCount) - 5 * 2) * mMainPhotoAspectRatioH / mMainPhotoAspectRatioW;
 					mThumbnailViewPager.setScrollSpeed(mThumbnailAutoPagingScrollSpeed);
-					mThumbnailViewPager.setPageMargin(-mPageMargin * (DISP_THUMBNAIL_COUNT - 1));
+					mThumbnailViewPager.getLayoutParams().height = h;
 					mThumbnailViewPager.requestLayout();
-					Log.d("Log", "------------------------------");
-					Log.d("Log", "onGlobalLayout");
-					Log.d("Log", "mainPhotoWidth = " + mainPhotoWidth);
-//					Log.d("Log", "thumbnailWidth = " + thumbnailWidth);
-					Log.d("Log", "lbtnWidth = " + lbtnWidth);
-					Log.d("Log", "rbtnWidth = " + rbtnWidth);
-					Log.d("Log", "pageMargin = " + mPageMargin);
-					Log.d("Log", "getRight() = " + getRight());
-					Log.d("Log", "getLeft() = " + getLeft());
-					Log.d("Log", "getWidth(2) = " + getWidth());
-					Log.d("Log", "------------------------------");
+
+					// 「＜」「＞」ボタンの初期化
+					findViewById(R.id.button_preview).getLayoutParams().height = h;
+					findViewById(R.id.button_next).getLayoutParams().height = h;
 
 					isInitalized = true;
 				}
 			}
 		});
-
 	}
 
 	/**
@@ -183,76 +180,72 @@ public class MainPhotoView extends LinearLayout {
 		mMainPhotoUrlList.clear();
 		mMainPhotoUrlList.addAll(mainPhotoUrlList);
 
-		final ThumbnailAdapter adapter = new ThumbnailAdapter(mMainPhotoUrlList, mPageMargin, DISP_THUMBNAIL_COUNT, activity);
+		final ThumbnailAdapter adapter = new ThumbnailAdapter(mMainPhotoUrlList, activity);
 		mThumbnailViewPager.setAdapter(adapter);
-		if (mMainPhotoUrlList.size() > DISP_THUMBNAIL_COUNT) {
-			mThumbnailViewPager.setOffscreenPageLimit(mMainPhotoUrlList.size() + DISP_THUMBNAIL_COUNT * 2);//TODO: 適正値を模索中
-			mThumbnailViewPager.setCurrentItem(DISP_THUMBNAIL_COUNT + (DISP_THUMBNAIL_COUNT / 2), false);
+
+		// サムネイル表示用ViewPagerの設定
+		if (mMainPhotoUrlList.size() > mThumbnailDispCount) {
+			// サムネイル表示枚数より表示データの方が多い場合
+			mThumbnailViewPager.setOffscreenPageLimit(mMainPhotoUrlList.size() + mThumbnailDispCount * 2);//TODO: 適正値を模索中
+			mThumbnailViewPager.setCurrentItem(mThumbnailDispCount, false);
 			mThumbnailViewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
 				@Override
 				public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
-					int virtualPosition = (position - DISP_THUMBNAIL_COUNT + mMainPhotoUrlList.size()) % mMainPhotoUrlList.size();
-					Log.d("Log", "------------------------------");
-					Log.d("Log", "onPageScrolled");
-					Log.d("Log", "virtualPosition = " + virtualPosition);
-					Log.d("Log", "position = " + position);
-					Log.d("Log", "positionOffset = " + positionOffset);
-					Log.d("Log", "positionOffsetPixels = " + positionOffsetPixels);
-					Log.d("Log", "------------------------------");
-					int realPosition = position;
-					if (positionOffsetPixels == 0) {
-						if (position == (DISP_THUMBNAIL_COUNT / 2)) {
-							realPosition = mThumbnailViewPager.getAdapter().getCount() - DISP_THUMBNAIL_COUNT * 2 + (DISP_THUMBNAIL_COUNT / 2);
-							mThumbnailViewPager.setCurrentItem(realPosition, false);
-						}
-					}
-					if (positionOffsetPixels >= mPageMargin - 5) {
-						if (position == mThumbnailViewPager.getAdapter().getCount() - DISP_THUMBNAIL_COUNT + (DISP_THUMBNAIL_COUNT / 2) - 1) {
-							realPosition = DISP_THUMBNAIL_COUNT + (DISP_THUMBNAIL_COUNT / 2);
-							mThumbnailViewPager.setCurrentItem(realPosition, false);
-						}
-					}
-					if (positionOffsetPixels == 0 || positionOffsetPixels >= mPageMargin - 5) {
-						final TextView tv = (TextView) findViewWithTag(realPosition).findViewWithTag("TextView");
-						if (position == mThumbnailViewPager.getCurrentItem()) {
-//							tv.setTextColor(Color.parseColor("#FF0000"));
-						} else {
-//							tv.setTextColor(Color.parseColor("#000000"));
-						}
-					}
+					// ignore
+//					Log.d("Log", "------------------------------");
+//					Log.d("Log", "onPageScrolled(" + position + ")");
+//					Log.d("Log", "position = " + position);
+//					Log.d("Log", "positionOffset = " + positionOffset);
+//					Log.d("Log", "positionOffsetPixels = " + positionOffsetPixels);
+//					Log.d("Log", "------------------------------");
 				}
 
 				@Override
 				public void onPageSelected(int position) {
-					int virtualPosition = (position - DISP_THUMBNAIL_COUNT + mMainPhotoUrlList.size()) % mMainPhotoUrlList.size();
-					Log.d("Log", "------------------------------");
-					Log.d("Log", "onPageSelected");
-					Log.d("Log", "virtualPosition = " + virtualPosition);
-					Log.d("Log", "position = " + position);
-					Log.d("Log", "------------------------------");
-//					final TextView tv = (TextView) mPager.findViewWithTag(position).findViewWithTag("TextView");
-//					tv.setBackgroundColor(Color.parseColor("#000000"));
+					// ignore
+//					Log.d("Log", "------------------------------");
+//					Log.d("Log", "onPageSelected(" + position + ")");
+//					Log.d("Log", "------------------------------");
 				}
 
 				@Override
 				public void onPageScrollStateChanged(int state) {
-					Log.d("Log", "------------------------------");
-					Log.d("Log", "onPageScrollStateChanged");
-					Log.d("Log", "state = " + state);
-					Log.d("Log", "------------------------------");
+					int position = mThumbnailViewPager.getCurrentItem();
+					int virtualPosition = position;
 					if (state == ViewPager.SCROLL_STATE_IDLE) {
 						// 無操作状態
 						findViewById(R.id.button_preview).setEnabled(true);
 						findViewById(R.id.button_next).setEnabled(true);
-						adapter.removeAutoPagingHandler();
+						adapter.setAutoPagingHandler();
+
+						// ポジションの循環処理
+						if (position == 0) {
+							// スクロール可能範囲の一番左のページの場合
+							// サムネイルの表示枚数分オフセットした右側のポジションへ移動
+							virtualPosition = mThumbnailViewPager.getAdapter().getCount() - mThumbnailDispCount * 2;
+							mThumbnailViewPager.setCurrentItem(virtualPosition, false);
+						} else if (position == mThumbnailViewPager.getAdapter().getCount() - mThumbnailDispCount) {
+							// スクロール可能範囲の一番右のページの場合
+							// サムネイルの表示枚数分オフセットした左側のポジションへ移動
+							virtualPosition = mThumbnailDispCount;
+							mThumbnailViewPager.setCurrentItem(virtualPosition, false);
+						}
 					} else {
-						//
+						// ページ操作中
 						findViewById(R.id.button_preview).setEnabled(false);
 						findViewById(R.id.button_next).setEnabled(false);
-						adapter.setAutoPagingHandler();
+						adapter.removeAutoPagingHandler();
 					}
+//					Log.d("Log", "------------------------------");
+//					Log.d("Log", "onPageScrollStateChanged");
+//					Log.d("Log", "state = " + state);
+//					Log.d("Log", "CurrentPosition(Now ) = " + position);
+//					Log.d("Log", "CurrentPosition(Next) = " + virtualPosition);
+//					Log.d("Log", "------------------------------");
 				}
 			});
+			mThumbnailViewPager.setSwipeEnabled(true);
+
 			// 前のページに移動
 			findViewById(R.id.button_preview).setOnClickListener(new View.OnClickListener() {
 				@Override
@@ -269,8 +262,9 @@ public class MainPhotoView extends LinearLayout {
 				}
 			});
 		} else {
-			mThumbnailViewPager.setOffscreenPageLimit(DISP_THUMBNAIL_COUNT);
-			mThumbnailViewPager.setCurrentItem(2);
+			// サムネイル表示枚数より表示データの方が少ない場合
+			mThumbnailViewPager.setOffscreenPageLimit(mThumbnailDispCount);
+			mThumbnailViewPager.setCurrentItem(0);
 			mThumbnailViewPager.setSwipeEnabled(false);
 			// 前のページに移動
 			findViewById(R.id.button_preview).setVisibility(View.INVISIBLE);
@@ -278,34 +272,41 @@ public class MainPhotoView extends LinearLayout {
 			findViewById(R.id.button_next).setVisibility(View.INVISIBLE);
 		}
 
+		// 自動ページ送り開始
 		adapter.setAutoPagingHandler();
 		this.setVisibility(View.VISIBLE);
 	}
 
+	/**
+	 * Viewの更新
+	 */
 	private void refreshViewPager() {
-		final int currentPosition = mThumbnailViewPager.getCurrentItem();
-		FrameLayout[] rootViews = new FrameLayout[DISP_THUMBNAIL_COUNT * 2];
-		for (int i = 0 ; i <= DISP_THUMBNAIL_COUNT * 2 - 1 ; i++) {
-			rootViews[i] = (FrameLayout) mThumbnailViewPager.findViewWithTag(currentPosition + i - DISP_THUMBNAIL_COUNT);
+		int offsetPos = 0;
+		int currentPosition = mThumbnailViewPager.getCurrentItem();
+		if (mThumbnailDispCount > mMainPhotoUrlList.size()) {
+			offsetPos = 1;
+			currentPosition = 0;
 		}
 
+		FrameLayout rootView;
+		TextView tv;
 		final ThumbnailAdapter adapter = (ThumbnailAdapter) mThumbnailViewPager.getAdapter();
-		for (int i = 0 ; i <= DISP_THUMBNAIL_COUNT * 2 - 1 ; i++) {
-			if (rootViews[i] != null) {
-				int position = currentPosition + i - DISP_THUMBNAIL_COUNT;
-				int virtualPosition = (position - DISP_THUMBNAIL_COUNT + mMainPhotoUrlList.size()) % mMainPhotoUrlList.size();
-				final TextView tv = (TextView) rootViews[i].findViewWithTag("TextView");
-				if (adapter.getFocusedPosition() == virtualPosition) {
-					tv.setBackgroundColor(mThumbnailFocusedColor);
-				} else {
-					tv.setBackgroundColor(mThumbnailUnFocusedColor);
-				}
-				// TODO:デバッグコード　カレントページの文字色を変更
-				if (BuildConfig.DEBUG) {
-					if (currentPosition == position) {
-						tv.setTextColor(Color.parseColor("#0000FF"));
+		Log.d("Log", "------------------------------");
+		Log.d("Log", "refreshViewPager");
+		Log.d("Log", "currentPosition = " + currentPosition);
+		Log.d("Log", "getFocusedPosition() = " + adapter.getFocusedPosition());
+		Log.d("Log", "------------------------------");
+		for (int i = -1 + offsetPos ; i < mThumbnailDispCount + 1 - offsetPos ; i++) {
+			rootView = (FrameLayout) mThumbnailViewPager.findViewWithTag(currentPosition * (1 - offsetPos) + i);
+			if (rootView != null) {
+				tv = (TextView) rootView.findViewWithTag("TextView");
+				if (tv != null) {
+					int position = currentPosition + mThumbnailDispCount * (-1 + offsetPos) + i;
+					int virtualPosition = (position + mMainPhotoUrlList.size()) % mMainPhotoUrlList.size();
+					if (adapter.getFocusedPosition() == virtualPosition) {
+						tv.setBackgroundColor(mThumbnailFocusedColor);
 					} else {
-						tv.setTextColor(Color.parseColor("#000000"));
+						tv.setBackgroundColor(mThumbnailUnFocusedColor);
 					}
 				}
 			}
@@ -313,15 +314,17 @@ public class MainPhotoView extends LinearLayout {
 		adapter.setAutoPagingHandler();
 	}
 
-	public void stopImageHandler() {
-		((ThumbnailAdapter) mThumbnailViewPager.getAdapter()).stopImageHandler();
+	public void stopHandlers() {
+		Log.d("Log", "stopImageGetHandler");
+		((ThumbnailAdapter) mThumbnailViewPager.getAdapter()).stopImageGetHandler();
+		((ThumbnailAdapter) mThumbnailViewPager.getAdapter()).removeAutoPagingHandler();
 	}
 
 	// ----------------------------------------
 	// インナークラス
 	// ----------------------------------------
 	/**
-	 * サムネイル用ViewPager（スワイプ無効化制御用）
+	 * サムネイル表示用ViewPager（スワイプ無効化制御用）
 	 */
 	public static class ThumbnailViewPager extends ViewPager {
 
@@ -349,8 +352,9 @@ public class MainPhotoView extends LinearLayout {
 				mScroller = ViewPager.class.getDeclaredField("mScroller");
 				mScroller.setAccessible(true);
 				Interpolator sInterpolator = new AccelerateInterpolator();
-				FixedSpeedScroller scroller = new FixedSpeedScroller(this.getContext(), sInterpolator, scrollSpeed);
+				AutoPagingSpeedControlScroller scroller = new AutoPagingSpeedControlScroller(this.getContext(), sInterpolator, scrollSpeed);
 				mScroller.set(this, scroller);
+				requestLayout();
 			} catch (final Exception ignored) {
 				Log.w(ignored.getClass().getCanonicalName(), ignored.getMessage(), ignored);
 			}
@@ -379,27 +383,31 @@ public class MainPhotoView extends LinearLayout {
 	 * サムネイル用PagerAdapter（無限ループ可能）
 	 */
 	private class ThumbnailAdapter extends PagerAdapter {
+		/** 自動ページ送り用のメッセージコード */
+		private static final int HANDLER_AUTO_PAGING = 1;
 
-		private WeakReference<Activity> mActivityHolder = null;
-
-		private final int mPageMargin;
-		private final int mDispPageCount;
-		private final int mVirtualCount;
-		private final int mRealCount;
+		/** WEB画像のURLを保持するリスト */
 		private final List<String> mImageUrlList;
 		/** WEB画像（Drawable）を保持するマップ */
 		private final HashMap<Integer, Drawable> mDrawerbleMap;
 
-		/** 画像取得用のExecutorService */
+		/** 循環ページ送りするための仮想ページ数 */
+		private final int mVirtualPageCount;
+		/** サムネイルの実際のページ数（データ数） */
+		private final int mRealPageCount;
+
+		/** 呼び出し元のActivity（弱参照） */
+		private WeakReference<Activity> mActivityHolder = null;
+
+		/** WEB画像取得用のExecutorService */
 		private ExecutorService mImageGetExecutor;
 
+		/** フォーカスされている画像のポジション */
 		private int mFocusedPosition = 0;
-//		private CrossFadeHandler mCrossFadeHandler;
-		// ヘッダー・フッターの再表示用のメッセージコード
-		private static final int HANDLER_CROSS_FADE = 1;
-		// スクロール停止時に呼ばれるハンドラーに渡されるメッセージ
+
+		/** 自動ページ送り用のハンドラーに渡されるメッセージ */
 		private Message mMessage = null;
-		// 自動ページ送り用のハンドラー
+		/** 自動ページ送り用のハンドラー */
 		private final Handler mAutoPagingHandler = new Handler(new Handler.Callback() {
 
 			@Override
@@ -408,23 +416,34 @@ public class MainPhotoView extends LinearLayout {
 					return false;
 				}
 
-				if (msg.what == HANDLER_CROSS_FADE) {
+				if (msg.what == HANDLER_AUTO_PAGING) {
 					final Drawable[] drawables = new Drawable[2];
-					int nextFocusedPosition = (mFocusedPosition + 1) % mMainPhotoUrlList.size();
+					final int nextFocusedPosition = (mFocusedPosition + 1) % mMainPhotoUrlList.size();
+					// 表示中の画像
 					drawables[0] = mDrawerbleMap.get(mFocusedPosition);
+					// 次に表示する画像
 					drawables[1] = mDrawerbleMap.get(nextFocusedPosition);
 
 					if (drawables[0] != null && drawables[1] != null) {
+						// 両方とも画像取得済みの場合、クロスフェードアニメーションを実行
 						final TransitionDrawable td = new TransitionDrawable(drawables);
 						mMainPhotoImageView.setImageDrawable(td);
 						td.startTransition(CROSS_FADE_ANIMATION_DURATION_MILLIS);
 					} else if (drawables[1] != null) {
+						// 次に表示する画像のみ取得済みの場合、ImageViewにそのまま設定
 						mMainPhotoImageView.setImageDrawable(drawables[1]);
 					}
-					//------------------------------------------
-					int virtualCurrentPosition = (mThumbnailViewPager.getCurrentItem() + 1 - DISP_THUMBNAIL_COUNT + mMainPhotoUrlList.size()) % mMainPhotoUrlList.size();
-					if (mFocusedPosition == virtualCurrentPosition) {
-						mThumbnailViewPager.setCurrentItem(mThumbnailViewPager.getCurrentItem() + 1, true);
+
+					// 自動ページ送りを実行
+					if (mVirtualPageCount <= mThumbnailDispCount) {
+						// 循環ページングなし
+						mThumbnailViewPager.setCurrentItem(nextFocusedPosition, false);
+					} else {
+						// 循環ページングあり
+						final int virtualPosition = (mThumbnailViewPager.getCurrentItem() - mThumbnailDispCount + mRealPageCount) % mRealPageCount;
+						if (mFocusedPosition == (virtualPosition + mThumbnailDispCount - 1) % mRealPageCount) {
+							mThumbnailViewPager.setCurrentItem(mThumbnailViewPager.getCurrentItem() + 1, true);
+						}
 					}
 					mFocusedPosition = nextFocusedPosition;
 					refreshViewPager();
@@ -434,66 +453,32 @@ public class MainPhotoView extends LinearLayout {
 		});
 
 		/**
-		 * サムネイルの自動ページ送り用ハンドラの設定（起動）
-		 */
-		public void setAutoPagingHandler() {
-			if (mThumbnailAutoPagingOn) {
-				// 自動ページ送りが有効の場合
-				removeAutoPagingHandler();
-				/*
-				 * Note) Callbackが設定されているとhandleMessage()に通知されない。
-				 * 参照：Handler.dispatchMessage()
-				 */
-				// メッセージを取得
-				mMessage = mAutoPagingHandler.obtainMessage(HANDLER_CROSS_FADE, this);
-
-				// mAutoPagingDurationミリ秒の遅延でメッセージを送信
-				if (!mAutoPagingHandler.sendMessageDelayed(mMessage, mThumbnailAutoPagingDuration)) {
-					Log.d("Log", " - Failed send message.");
-				} else {
-					Log.d("Log", " - Success send message.");
-				}
-			}
-		}
-
-		/**
-		 * サムネイルの自動ページ送り用ハンドラからメッセージ削除
-		 */
-		public void removeAutoPagingHandler() {
-			if (mMessage != null && mAutoPagingHandler.hasMessages(HANDLER_CROSS_FADE, this)) {
-				// 既にメッセージが追加されている場合はメッセージを削除
-				mAutoPagingHandler.removeMessages(HANDLER_CROSS_FADE, this);
-			}
-		}
-
-		/**
 		 * コンストラクタ
 		 *
-		 * @param imageUrlList
-		 * @param pageMargin
-		 * @param dispPageCount 一度に表示されるページ数
+		 * @param imageUrlList サムネイル画像用URLのリスト
 		 * @param activity {@link Activity}
 		 */
-		public ThumbnailAdapter(final List<String> imageUrlList, final int pageMargin, final int dispPageCount, final Activity activity) {
+		public ThumbnailAdapter(final List<String> imageUrlList, final Activity activity) {
 			super();
+
 			if (imageUrlList == null || activity == null) {
 				// コンストラクタの引数はすべて必須のため１つでもnullの引数があった場合は例外を発行
 				throw new IllegalArgumentException("MainPhotoViewPager null in the argument");
 			}
+
 			mImageUrlList = imageUrlList;
-			mPageMargin = pageMargin;
-			mDispPageCount = dispPageCount;
-			mRealCount = mImageUrlList.size();
-			if (mRealCount > mDispPageCount) {
+			mRealPageCount = mImageUrlList.size();
+			if (mRealPageCount > mThumbnailDispCount) {
 				// 表示ページ数より多い場合
-				mVirtualCount = mRealCount + mDispPageCount * 2;
+				mVirtualPageCount = mRealPageCount + mThumbnailDispCount * 2;
 			} else {
 				// 表示ページ数以下の場合
-				mVirtualCount = mDispPageCount;
+				mVirtualPageCount = mThumbnailDispCount;
 			}
 			mDrawerbleMap = new HashMap<Integer, Drawable>();
-			mImageGetExecutor = Executors.newFixedThreadPool(mRealCount);
+			mImageGetExecutor = Executors.newFixedThreadPool(mRealPageCount);
 			mActivityHolder = new WeakReference<Activity>(activity);
+
 		}
 
 		@Override
@@ -501,81 +486,87 @@ public class MainPhotoView extends LinearLayout {
 			FrameLayout rootView;
 			rootView = (FrameLayout) container.findViewWithTag(position);
 			if (rootView == null) {
-				int h = (mPageMargin - 5 * 2) * 3 / 4;
 				rootView = new FrameLayout(container.getContext());
 				rootView.setTag(position);
-				rootView.setPadding(
-						mPageMargin + 5,
-						0,
-						mPageMargin + 5,
-						0);
-//				rootView.setOrientation(LinearLayout.VERTICAL);
+				// サムネイル画像間(左右)のパディングを設定
+				rootView.setPadding(mThumbnailMargin, 0, mThumbnailMargin, 0);
 
-
-				final TextView tv = new TextView(rootView.getContext());
-				tv.setTag("TextView");
-				tv.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h));
-				tv.setGravity(Gravity.CENTER);
 				final int virtualPosition;
-				if (mVirtualCount == mRealCount) {
+				if (mVirtualPageCount <= mThumbnailDispCount) {
 					// ページングなし
 					virtualPosition = position;
-//					tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
 				} else {
-					virtualPosition = (position - mDispPageCount + mRealCount) % mRealCount;
-					if (0 <= position && position <= mDispPageCount - (mDispPageCount / 2)) {
-						// 左側の仮ページ
-//						tv.setBackgroundColor(Color.parseColor("#66FF0000"));
-					} else if (mVirtualCount - mDispPageCount + (mDispPageCount / 2) - 1 <= position && position <= mVirtualCount - (mDispPageCount / 2)) {
-						// 右側の仮ページ
-//						tv.setBackgroundColor(Color.parseColor("#66FFFF00"));
-					} else {
-						// 中央の実ページ
-//						tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
-					}
+					virtualPosition = (position - mThumbnailDispCount + mRealPageCount) % mRealPageCount;
 				}
-				tv.setTextSize(30);
-				tv.setText(virtualPosition + "");
 
-				final ImageView iv = new ImageView(rootView.getContext());
-				iv.setTag("ImageView");
-				iv.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h));
-				iv.setOnClickListener(new OnClickListener() {
-					@Override
-					public void onClick(View v) {
-//						((TextView) container.findViewWithTag(position).findViewWithTag("TextView")).setTextColor(Color.parseColor("#FF0000"));
-						if (mDrawerbleMap.containsKey(virtualPosition) && mFocusedPosition != virtualPosition) {
-							//------------------------------------------
-							final Drawable[] drawables = new Drawable[2];
-							drawables[0] = mDrawerbleMap.get(mFocusedPosition);
-							drawables[1] = mDrawerbleMap.get(virtualPosition);
 
-							if (drawables[0] != null && drawables[1] != null) {
-								final TransitionDrawable td = new TransitionDrawable(drawables);
-								mMainPhotoImageView.setImageDrawable(td);
-								td.startTransition(CROSS_FADE_ANIMATION_DURATION_MILLIS);
-							} else if (drawables[1] != null) {
-								mMainPhotoImageView.setImageDrawable(drawables[1]);
+				if (virtualPosition < mImageUrlList.size()) {
+					final TextView tv = new TextView(rootView.getContext());
+					tv.setTag("TextView");
+					tv.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+					tv.setGravity(Gravity.CENTER);
+//					tv.setTextSize(30);
+//					tv.setText(virtualPosition + "");
+
+					final ImageView iv = new ImageView(rootView.getContext());
+					iv.setTag("ImageView");
+					iv.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+					iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+					rootView.setOnClickListener(new OnClickListener() {
+						@Override
+						public void onClick(final View v) {
+							if (mDrawerbleMap.containsKey(virtualPosition) && mFocusedPosition != virtualPosition) {
+								final Drawable[] drawables = new Drawable[2];
+								drawables[0] = mDrawerbleMap.get(mFocusedPosition);
+								drawables[1] = mDrawerbleMap.get(virtualPosition);
+
+								if (drawables[0] != null && drawables[1] != null) {
+									final TransitionDrawable td = new TransitionDrawable(drawables);
+									mMainPhotoImageView.setImageDrawable(td);
+									td.startTransition(CROSS_FADE_ANIMATION_DURATION_MILLIS);
+								} else if (drawables[1] != null) {
+									mMainPhotoImageView.setImageDrawable(drawables[1]);
+								}
 							}
-							//------------------------------------------
+							mFocusedPosition = virtualPosition;
+							refreshViewPager();
 						}
-						mFocusedPosition = virtualPosition;
-						refreshViewPager();
+					});
+
+					if (!mDrawerbleMap.containsKey(virtualPosition)) {
+						// 画像が未取得の場合、画像取得用のExecutorServiceを実行
+						mImageGetExecutor.execute(
+								new ImageGetHandler(
+										virtualPosition,
+										mImageUrlList.get(virtualPosition),
+										new ImageGetHandler.OnGetDrawable() {
+											@Override
+											public void onGetDrawable(final int index, final Drawable drawable) {
+												mDrawerbleMap.put(index, drawable);
+												if (!mActivityHolder.get().isFinishing()) {
+													mActivityHolder.get().runOnUiThread(new Runnable() {
+														@Override
+														public void run() {
+															iv.setImageDrawable(mDrawerbleMap.get(virtualPosition));
+															if (mMainPhotoImageView.getDrawable() == null && virtualPosition == 0) {
+																mMainPhotoImageView.setImageDrawable(mDrawerbleMap.get(virtualPosition));
+															}
+														}
+													});
+												}
+											}
+										}));
 					}
-				});
-//				iv.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
-
-				mImageGetExecutor.execute(new ImageGetHandler(virtualPosition, iv));
-
-				rootView.addView(iv);
-				rootView.addView(tv);
+					rootView.addView(iv);
+					rootView.addView(tv);
+				}
 
 				container.addView(rootView);
 				Log.d("Log", "==============================");
 				Log.d("Log", "instantiateItem(" + position + ")");
-				Log.d("Log", "mDispPageCount = " + mDispPageCount);
-				Log.d("Log", "mVirtualCount = " + mVirtualCount);
-				Log.d("Log", "mRealCount = " + mRealCount);
+				Log.d("Log", "mThumbnailDispCount = " + mThumbnailDispCount);
+				Log.d("Log", "mVirtualPageCount = " + mVirtualPageCount);
+				Log.d("Log", "mRealPageCount = " + mRealPageCount);
 				Log.d("Log", "position = " + position);
 				Log.d("Log", "virtualPosition = " + virtualPosition);
 				Log.d("Log", "==============================");
@@ -589,6 +580,11 @@ public class MainPhotoView extends LinearLayout {
 		}
 
 		@Override
+		public float getPageWidth(int position) {
+			return 1.0f / mThumbnailDispCount;
+		}
+
+		@Override
 		public void destroyItem(final ViewGroup container, final int position, final Object object) {
 			Log.d("Log", "==============================");
 			Log.d("Log", "destroyItem(" + position + ")");
@@ -599,12 +595,12 @@ public class MainPhotoView extends LinearLayout {
 
 		@Override
 		public int getCount() {
-			return mVirtualCount;
+			return mVirtualPageCount;
 		}
 
 		@Override
 		public boolean isViewFromObject(final View view, final Object object) {
-			return view == object; // false
+			return view == object;
 		}
 
 		@Override
@@ -625,9 +621,9 @@ public class MainPhotoView extends LinearLayout {
 		}
 
 		/**
-		 * 画像取得ハンドラの停止
+		 * 画像取得の停止
 		 */
-		void stopImageHandler() {
+		void stopImageGetHandler() {
 			mImageGetExecutor.shutdown();
 			try {
 				// 既存タスクの終了を待つ
@@ -648,77 +644,110 @@ public class MainPhotoView extends LinearLayout {
 			mImageGetExecutor = null;
 		}
 
+		/**
+		 * フォーカスされているサムネイルのポジションを取得
+		 */
 		public int getFocusedPosition() {
 			return mFocusedPosition;
 		}
 
 		/**
-		 * 画像取得ハンドラ
+		 * サムネイルの自動ページ送り用ハンドラの開始
 		 */
-		private class ImageGetHandler implements Runnable {
-			/** メインフォトのサムネイルを表示するImageView */
-			private WeakReference<ImageView> mImageViewHolder = null;
+		public void setAutoPagingHandler() {
+			if (mThumbnailAutoPagingOn && mRealPageCount > 1) {
+				// 自動ページ送りが有効の場合
+				removeAutoPagingHandler();
+				/*
+				 * Note) Callbackが設定されているとhandleMessage()に通知されない。
+				 * 参照：Handler.dispatchMessage()
+				 */
+				// メッセージを取得
+				mMessage = mAutoPagingHandler.obtainMessage(HANDLER_AUTO_PAGING, this);
 
-			private final int mImageIndex;
+				// mAutoPagingDurationミリ秒の遅延でメッセージを送信
+				final boolean successed = mAutoPagingHandler.sendMessageDelayed(mMessage, mThumbnailAutoPagingDuration);
 
-			/**
-			 * コンストラクタ
-			 * @param index 画像のインデックス
-			 * @param imageView メインフォトのサムネイルを表示するImageView
-			 */
-			public ImageGetHandler(final int index, final ImageView imageView) {
-				mImageIndex = index;
-				mImageViewHolder = new WeakReference<ImageView>(imageView);
-			}
-
-			public void run() {
-				try {
-//					if (mImageViewHolder.get().getDrawable() == null) {
-//						mImageViewHolder.get().setImageResource(0);
-//					}
-					// 未取得の画像だった場合、WEBから画像を取得
-					if (!mDrawerbleMap.containsKey(mImageIndex)) {
-						final InputStream is = new URL(mImageUrlList.get(mImageIndex)).openStream();
-						mDrawerbleMap.put(mImageIndex, Drawable.createFromStream(is, ""));
-						is.close();
-					}
-					if (!mActivityHolder.get().isFinishing()) {
-						mActivityHolder.get().runOnUiThread(new Runnable() {
-							@Override
-							public void run() {
-								mImageViewHolder.get().setImageDrawable(mDrawerbleMap.get(mImageIndex));
-								if (mMainPhotoImageView.getDrawable() == null && mImageIndex == 0) {
-									mMainPhotoImageView.setImageDrawable(mDrawerbleMap.get(mImageIndex));
-								}
-							}
-						});
-					}
-				} catch (final Exception ignored) {
-					Log.w(ignored.getClass().getCanonicalName(), ignored.getMessage(), ignored);
+				// TODO:デバッグコード
+				if (successed) {
+					Log.d("Log", " - Success send message.");
+				} else {
+					Log.d("Log", " - Failed send message.");
 				}
 			}
+		}
+
+		/**
+		 * サムネイルの自動ページ送り用ハンドラの停止（メッセージ削除）
+		 */
+		public void removeAutoPagingHandler() {
+			if (mMessage != null && mAutoPagingHandler.hasMessages(HANDLER_AUTO_PAGING, this)) {
+				// 既にメッセージが追加されている場合はメッセージを削除
+				mAutoPagingHandler.removeMessages(HANDLER_AUTO_PAGING, this);
+			}
+		}
+
+	}
+
+	/**
+	 * 画像取得ハンドラ
+	 */
+	private static class ImageGetHandler implements Runnable {
+		/** 画像のインデックス */
+		private final int mImageIndex;
+		/** 画像のURL */
+		private final String mImageUrl;
+		/** 画像取得のコールバック */
+		private final OnGetDrawable mCallbacks;
+
+		/**
+		 * コンストラクタ
+		 * @param imageIndex 画像のインデックス
+		 * @param imageUrl 画像のURL
+		 * @param callbacks 画像取得のコールバック
+		 */
+		/* package private */ ImageGetHandler(final int imageIndex, final String imageUrl, final OnGetDrawable callbacks) {
+			mImageIndex = imageIndex;
+			mImageUrl  = imageUrl;
+			mCallbacks = callbacks;
+		}
+
+		public void run() {
+			try {
+				// WEBから画像を取得
+				final InputStream is = new URL(mImageUrl).openStream();
+				mCallbacks.onGetDrawable(mImageIndex, Drawable.createFromStream(is, ""));
+				is.close();
+			} catch (final Exception ignored) {
+				Log.w(ignored.getClass().getCanonicalName(), ignored.getMessage(), ignored);
+			}
+		}
+
+		/** 画像取得のコールバック用インターフェース */
+		interface OnGetDrawable {
+			void onGetDrawable(final int index, final Drawable drawable);
 		}
 	}
 
 	/**
 	 * サムネイルの自動ページ送りのスクロール速度を変更するScroller
 	 */
-	private static class FixedSpeedScroller extends Scroller {
+	private static class AutoPagingSpeedControlScroller extends Scroller {
 
-		private int mDuration;
+		private final int mDuration;
 
-		public FixedSpeedScroller(Context context, Interpolator interpolator, int duration) {
+		/* package private */ AutoPagingSpeedControlScroller(final Context context, final Interpolator interpolator, final int duration) {
 			super(context, interpolator);
 			mDuration = duration;
 		}
 
 		@Override
-		public void startScroll(int startX, int startY, int dx, int dy, int duration) {
+		public void startScroll(final int startX, final int startY, final int dx, final int dy, final int duration) {
 			super.startScroll(startX, startY, dx, dy, mDuration);
 		}
 
 		@Override
-		public void startScroll(int startX, int startY, int dx, int dy) {
+		public void startScroll(final int startX, final int startY, final int dx, final int dy) {
 			super.startScroll(startX, startY, dx, dy, mDuration);
 		}
 	}

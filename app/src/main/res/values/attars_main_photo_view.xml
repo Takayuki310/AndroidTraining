@@ -2,22 +2,24 @@
 
 	<!-- MainPhotoView独自属性 -->
 	<declare-styleable name="MainPhotoView">
+		<!-- メイン画像のアスペクト比（w） -->
+		<attr name="main_photo_aspect_ratio_w" format="integer"/>
+		<!-- メイン画像のアスペクト比（h） -->
+		<attr name="main_photo_aspect_ratio_h" format="integer"/>
+		<!-- サムネイルの表示枚数 -->
+		<attr name="thumbnail_disp_count" format="integer"/>
 		<!-- サムネイルの自動ページ送りのON/OFF -->
-		<attr name="thumbnail_auto_paging_on" format="boolean" />
+		<attr name="thumbnail_auto_paging_on" format="boolean"/>
 		<!-- サムネイルの自動ページ送りの周期(ミリ秒) -->
-		<attr name="thumbnail_auto_paging_duration" format="integer" />
+		<attr name="thumbnail_auto_paging_duration" format="integer"/>
 		<!-- サムネイルの自動ページ送りのスクロール速度(ミリ秒) -->
-		<attr name="thumbnail_auto_paging_scroll_speed" format="integer" />
+		<attr name="thumbnail_auto_paging_scroll_speed" format="integer"/>
 		<!-- サムネイルのフォーカス色（アルファ値まで指定しないと塗りつぶしてしまう） -->
 		<attr name="thumbnail_focused_color" format="color"/>
 		<!-- サムネイルの非フォーカス色 -->
 		<attr name="thumbnail_unfocused_color" format="color"/>
-
-
-		<!--
-		ストロークの幅ですdimensionを指定することで10dpなどの単位を付けた値が利用できます。
-		赤い三角形ではこの値が10dpに設定されています 。
-		-->
-		<attr name="stroke_width" format="dimension" />
+		<!-- サムネイル間のマージン -->
+		<attr name="thumbnail_margin" format="dimension"/>
 	</declare-styleable>
+
 </resources>
